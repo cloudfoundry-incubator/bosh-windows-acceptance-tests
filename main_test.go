@@ -66,6 +66,8 @@ type Config struct {
 		ClientSecret string `json:"client_secret"`
 		Target       string `json:"target"`
 	} `json:"bosh"`
+	GoZipPath                 string `json:"go_zip_path"`
+	LgpoZipPath               string `json:"lgpo_zip_path"`
 	Stemcellpath              string `json:"stemcell_path"`
 	StemcellOs                string `json:"stemcell_os"`
 	Az                        string `json:"az"`
@@ -223,7 +225,21 @@ var _ = Describe("BOSH Windows", func() {
 		stemcellName = stemcellYML.Name
 		stemcellVersion = stemcellYML.Version
 
-		releaseVersion = createBwatsRelease(bosh)
+		lgpoZipPath := config.LgpoZipPath
+		if lgpoZipPath == "" {
+			log.Printf("Downloading LGPO from: %s\n", LgpoUrl)
+			lgpoZipPath, err = downloadFile("lgpo-", LgpoUrl)
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		goZipPath := config.GoZipPath
+		if goZipPath == "" {
+			log.Printf("Downloading Go from: %s\n", GolangURL)
+			goZipPath, err = downloadFile("golang-", GolangURL)
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		releaseVersion = createBwatsRelease(bosh, goZipPath, lgpoZipPath)
 
 		uploadStemcell(config, bosh)
 
@@ -304,8 +320,12 @@ var _ = Describe("BOSH Windows", func() {
 	})
 
 	It("has all certificate authority certs that are present on the Windows Update Server", func() {
-		err := runTest("check-wu-certs")
-		Expect(err).NotTo(HaveOccurred())
+		if config.SkipMSUpdateTest {
+			Skip("Skipping check-updates test - SkipMSUpdateTest set to true")
+		} else {
+			err := runTest("check-wu-certs")
+			Expect(err).NotTo(HaveOccurred())
+		}
 	})
 
 	It("mounts ephemeral disks when asked to do so and does not mount them otherwise", func() {
@@ -370,18 +390,13 @@ func uploadStemcell(config *Config, bosh *BoshCommand) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func createBwatsRelease(bosh *BoshCommand) string {
+func createBwatsRelease(bosh *BoshCommand, goZipPath, lgpoZipPath string) string {
 	pwd, err := os.Getwd()
 	Expect(err).NotTo(HaveOccurred())
 
 	releaseVersion = fmt.Sprintf("0.dev+%d", getTimestampInMs())
-	goZipPath, err := downloadFile("golang-", GolangURL)
-	Expect(err).NotTo(HaveOccurred())
 	releaseDir := filepath.Join(pwd, "assets", "bwats-release")
 	Expect(bosh.RunIn(fmt.Sprintf("add-blob %s golang-windows/%s", goZipPath, GoZipFile), releaseDir)).To(Succeed())
-
-	lgpoZipPath, err := downloadFile("lgpo-", LgpoUrl)
-	Expect(err).NotTo(HaveOccurred())
 
 	zipReader, err := zip.OpenReader(lgpoZipPath)
 	Expect(err).NotTo(HaveOccurred())
