@@ -214,7 +214,7 @@ var _ = Describe("BOSH Windows", func() {
 		Expect(err).NotTo(HaveOccurred())
 		bosh = setupBosh(config)
 
-		bosh.Run("login")
+		Expect(bosh.Run("login")).To(Succeed())
 		deploymentName = fmt.Sprintf("windows-acceptance-test-%d", getTimestampInMs())
 
 		stemcellYML, err := fetchStemcellInfo(config.Stemcellpath)
